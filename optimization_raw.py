@@ -127,7 +127,7 @@ if __name__=="__main__":
     save_folder=os.path.join("./Optimization", test_name)
     save_folder=os.path.join(save_folder, station)
     os.makedirs(save_folder, exist_ok=True)
-    optimizer=DL_optimizer_gw(M, buffersize)
+    optimizer=DL_optimizer_gw(M, buffersize/1e6)
     #load data and get rates
     full_som, full_los, Rsc, Rdl, outage_los = optimizer.load_data("Optimization/"+data_folder)
     log(f"Rsc:{Rsc}, Rdl:{Rdl}")
@@ -142,7 +142,7 @@ if __name__=="__main__":
     with open(f'./{save_folder}/outage_los.pickle', 'wb') as f:
         pickle.dump(outage_los, f, protocol=pickle.HIGHEST_PROTOCOL)
         
-    optimizer.setup(Rsc, Rdl)
+    optimizer.setup(Rsc/1e6, Rdl/1e6)
 
     month=0
     log(f"month process initiating: {month}")

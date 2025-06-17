@@ -115,8 +115,8 @@ class DL_optimizer_gw:
         # Ground station cappin
         rising_edges = cp.Variable(N, boolean=True)
         falling_edges = cp.Variable(N, boolean=True)
-        re_cumsum = cp.Variable(N)
-        fe_cumsum = cp.Variable(N)
+        re_cumsum = cp.cumsum(rising_edges)
+        fe_cumsum = cp.cumsum(falling_edges)
         T_gs = cp.Variable(N, boolean=True)
 
         # Constraints list
@@ -146,8 +146,6 @@ class DL_optimizer_gw:
         constraints += [falling_edges[:M] == 0]
 
         constraints += [falling_edges[M:N] == rising_edges[:(N-M)]]
-        constraints += [(cp.sum(rising_edges[:N-M]) - cp.sum(falling_edges[:N-M])) >= 0]
-        constraints += [(cp.sum(rising_edges[:N-M]) - cp.sum(falling_edges[:N-M])) <= 1]
 
         constraints += [rising_edges[N-M:N] == 0]
         constraints += [T_gs == (re_cumsum - fe_cumsum)]
@@ -160,7 +158,7 @@ class DL_optimizer_gw:
         problem = cp.Problem(objective, constraints)
         print(cp.installed_solvers())
 
-        problem.solve(solver=cp.GUROBI, verbose=False, TimeLimit=7200)
+        problem.solve(solver=cp.GUROBI, verbose=True, TimeLimit=7200, MiPGap=0.005)
 
         # Output
         print("Status:", problem.status)
@@ -236,7 +234,7 @@ if __name__=="__main__":
     # data_folder = 'station_AAU_rate_75211954'
     for data_folder in data_folders:
         station = data_folder.split("_")[1]
-        rho_list =[1/5, 1/3, 1/2, 2/3]
+        rho_list =[1/3, 2/3]
         M=60
         c1 = 1
         if station=="AAU":
@@ -249,7 +247,7 @@ if __name__=="__main__":
         save_folder=os.path.join("./Optimization/final_results", test_name)
         save_folder=os.path.join(save_folder, station)
         os.makedirs(save_folder, exist_ok=True)
-        optimizer=DL_optimizer_gw(M, buffersize)
+        optimizer=DL_optimizer_gw(M, buffersize/1e6)
         #load data and get rates
         full_som, full_los, full_GW_los, Rsc, Rdl, Rgw, outage_los=optimizer.load_data("Optimization/"+data_folder)
         log(f"Rsc:{Rsc}, Rdl:{Rdl}, Rgw:{Rgw}")
@@ -271,7 +269,7 @@ if __name__=="__main__":
             with open(f'./{test_folder}/outage_los.pickle', 'wb') as f:
                 pickle.dump(outage_los, f, protocol=pickle.HIGHEST_PROTOCOL)
                 
-            optimizer.setup(Rsc, Rdl, Rgw, rho, gamma, c1 = c1, c2 = c2)
+            optimizer.setup(Rsc/1e6, Rdl/1e6, Rgw/1e6, rho, gamma, c1 = c1, c2 = c2)
             # for i in range(len(indexes)-1):
 
             month=0

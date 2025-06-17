@@ -132,7 +132,7 @@ class DL_optimizer_gw:
         problem = cp.Problem(objective, constraints)
         print(cp.installed_solvers())
 
-        problem.solve(solver=cp.GUROBI, verbose=True, TimeLimit=7200, MiPGap=0.005)
+        problem.solve(solver=cp.GUROBI, verbose=True, TimeLimit=7200, MiPGap = 0.005)
 
         # Output
         print("Status:", problem.status)
@@ -198,13 +198,14 @@ def log(msg):
     print(f"[{datetime.datetime.now()}] {msg}")
 
 if __name__=="__main__":
-    log("starting...")
+    import time
+    log("Starting...")
     #Parameters:
 
     test_id = 0
-    data_folders = ['station_NN11_rate_404820636', 'station_AAU_rate_59677090']
-    # data_folders = ['station_AAU_rate_59677090']
+    #data_folders = ['station_NN11_rate_404820636', 'station_AAU_rate_59677090']
     # data_folders = ['station_NN11_rate_404820636']
+    data_folders = ['station_AAU_rate_59677090']
     for data_folder in data_folders:
         station = data_folder.split("_")[1]
         M=60
@@ -214,8 +215,9 @@ if __name__=="__main__":
             c1=0.1
         buffersize=250e9*8
         alpha=1
+        rho_list =[0.6]
         buffer=0
-        rho_list =[1/3, 2/3]
+        print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! {station} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         
 
         test_name = 'Optim_results_gs'
@@ -224,54 +226,34 @@ if __name__=="__main__":
         os.makedirs(save_folder, exist_ok=True)
         optimizer=DL_optimizer_gw(M, buffersize/1e6)
         #load data and get rates
-        full_som, full_los, Rsc, Rdl, outage_los=optimizer.load_data("Optimization/"+data_folder)
-        log(f"Rsc:{Rsc}, Rdl:{Rdl}")
-        indexes=optimizer.split_data(full_los)
-        log(indexes)
-        for rho in rho_list:
-            log(f"Starting rho: {rho}")
+        full_som, full_los, Rsc_init, Rdl, outage_los=optimizer.load_data("Optimization/"+data_folder)
 
-            test_folder=os.path.join(save_folder, f"util_{rho:.2f}")
-            os.makedirs(test_folder,exist_ok=True)
-            with open(f'./{test_folder}/Rsc.pickle', 'wb') as f:
-                pickle.dump(Rsc, f, protocol=pickle.HIGHEST_PROTOCOL)
-            with open(f'./{test_folder}/Rdl.pickle', 'wb') as f:
-                pickle.dump(Rdl, f, protocol=pickle.HIGHEST_PROTOCOL)
-            with open(f'./{test_folder}/outage_los.pickle', 'wb') as f:
-                pickle.dump(outage_los, f, protocol=pickle.HIGHEST_PROTOCOL)
-                
-            optimizer.setup(Rsc/1e6, Rdl/1e6, alpha, rho, c1)
-            # for i in range(len(indexes)-1):
+        Rsc_max = {"AAU": 1906384489, "NN11":16584367597}
+        Rsc_list=np.linspace(Rsc_init, Rsc_max[station], 25)
+        for Rsc in Rsc_list:
+            t1=time.perf_counter()
+            log(f"Starting Rsc:{Rsc}, Rdl:{Rdl}")
+            indexes=optimizer.split_data(full_los)
+            for rho in rho_list:
+                log(f"Starting rho: {rho}")                    
+                optimizer.setup(Rsc/1e6, Rdl/1e6, alpha, rho, c1)
 
-            month=0
-            log(f"rho process initiating: {rho}")
-            T_som, T_los=optimizer.get_data(full_som, full_los, [indexes[month], indexes[month+1]])
-            # log(f"rho length in samples: {len(rho)}")
-            log(f"Data aquired")
-            T_sc, T_dl, T_idle, GS=optimizer.optimize(T_som, T_los, buffer)
-            log(f"Done optimizing for rho:{rho}")
+                month=0
+                log(f"rho process initiating: {rho}")
+                T_som, T_los=optimizer.get_data(full_som, full_los, [indexes[month], indexes[month+1]])
 
-            outages, end_buffer, total_cost, total_DL=optimizer.analyze("Optimization/"+data_folder, T_dl, Rdl, GS, c1, rho)
-            # extra_folder="final_results/Optim_results_gs"
-            extra_folder="Processing"
-            with open(f'./{extra_folder}/results_summary_gs.txt', "a") as summary_file_eng:
-                summary_file_eng.write(f"{rho:.2f} & {station} & {total_cost:.3e} & {(end_buffer/1e9):.2f}GB & {(total_DL/1e9):.2f} \\\\\n")
-            with open(f'./{test_folder}/end_buffer.txt', 'w') as f:
-                f.write(f"data in buffer end (outages): {end_buffer}\n")
-                f.write(f"total cost: {total_cost}")
-            f.close()
-            log(f"Analysis done. end buffer: {end_buffer}")
+                log(f"Data aquired") 
+                T_sc, T_dl, T_idle, GS=optimizer.optimize(T_som, T_los, buffer)
+                log(f"Done optimizing for rho:{rho}")
+                test_folder="blob"
 
-            optimizer.plotting(rho, station, T_dl, T_sc, GS, Rdl, Rsc, outages, buffersize, test_folder)
-            log("Plotting done")
-            # plt.savefig(f"{save_folder}/test111.png")
-            with open(f'./{test_folder}/T_sc.pickle', 'wb') as f:
-                pickle.dump(T_sc, f, protocol=pickle.HIGHEST_PROTOCOL)
-            with open(f'./{test_folder}/T_dl.pickle', 'wb') as f:
-                pickle.dump(T_dl, f, protocol=pickle.HIGHEST_PROTOCOL)
-            with open(f'./{test_folder}/T_idle.pickle', 'wb') as f:
-                pickle.dump(T_idle, f, protocol=pickle.HIGHEST_PROTOCOL)
-            with open(f'./{test_folder}/GS.pickle', 'wb') as f:
-                pickle.dump(GS, f, protocol=pickle.HIGHEST_PROTOCOL)
-            log(f"Saved to pickle, rho: {rho:.2f}")
+                outages, end_buffer, total_cost, total_DL=optimizer.analyze("Optimization/"+data_folder, T_dl, Rdl, GS, c1, rho)
+                exam_prep="exam_prep"
+                os.makedirs(os.path.join(exam_prep, "gs"), exist_ok=True)
+                optimizer.plotting(rho, station, T_dl, T_sc, GS, Rdl, Rsc, outages, buffersize, exam_prep)
+                results_path = os.path.join(exam_prep, "gs", f"results_{station}_{rho:.2f}_gs.txt")
+                with open(results_path, "a") as f:
+                    f.write(f"{Rsc}\t{end_buffer}\t{total_cost}\t{total_DL}\t{time.perf_counter()-t1}\n")
+                log(f"Analysis done, time={time.perf_counter()-t1}")
+
     log("Done for gs")
